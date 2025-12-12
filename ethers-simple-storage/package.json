@@ -1,0 +1,17 @@
+{
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "ethers": "^6.15.0",
+    "fs-extra": "^11.3.2"
+  },
+  "scripts": {
+    "compile:standalone": "npx solc --abi --bin ./contracts/SimpleStorage.sol -o ./build",
+    "compile:with-imports": "npx solc --bin --abi --include-path node_modules/ --base-path . -o ./build ./contracts/SimpleStorage.sol",
+    "compile": "echo '请选择编译方式: npm run compile:standalone 或 npm run compile:with-imports'",
+    "deploy:old": "node deploy-old.js",
+    "deploy:new": "node deploy-new.js"
+  },
+  "devDependencies": {
+    "solc": "^0.8.8"
+  }
+}
