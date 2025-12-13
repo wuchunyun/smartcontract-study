@@ -4,7 +4,7 @@ require("dotenv").config();
 
 async function main() {
   // 1. Establish connection
-  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL, 1337);
+  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
   const wallet = new ethers.Wallet(process.env.PRIVATE_KEY);
   const connectedWallet = wallet.connect(provider);
   console.log("网络RPC URL:", process.env.RPC_URL);
@@ -30,7 +30,7 @@ async function main() {
 async function validateNetwork(provider) {
   try {
     const network = await provider.getNetwork();
-    console.log("网络Chain ID:", network.chainId.toString());
+    console.log("网络连接成功,Chain ID:", network.chainId.toString());
   } catch (err) {
     console.error("无法连接到网络,请检查Ganache是否运行及RPC URL是否正确:", err.message);
     process.exit(1);
