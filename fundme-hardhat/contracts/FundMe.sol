@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 //Chainlink 集成：用于获取实时 ETH/USD 价格
-import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import "./PriceConverter.sol";
 
 //自定义异常
@@ -18,32 +18,34 @@ contract FundMe {
     //转账人数组
     address[] public funders;
 
-    // Could we make this constant?  /* hint: no! We should make it immutable! */
     //合约所有者
     address public immutable i_owner;
 
     //可转账的最小USD ？
     uint256 public constant MINIMUM_USD = 50 * 10 ** 18;
 
+    AggregatorV3Interface public s_priceFeed;
+
     //构造函数：初始化i_owner为合约部署的用户
-    constructor() {
+    constructor(address priceFeedAddress) {
         i_owner = msg.sender;
+        s_priceFeed = AggregatorV3Interface(priceFeedAddress);
     }
 
     //资助
     function fund() public payable {
         //校验最小转账金额
         require(
-            msg.value.getConversionRate() >= MINIMUM_USD,
+            msg.value.getConversionRate(s_priceFeed) >= MINIMUM_USD,
             "You need to spend more ETH!"
         );
-        // require(PriceConverter.getConversionRate(msg.value) >= MINIMUM_USD, "You need to spend more ETH!");
 
         //资助人--累计转账金额
+        //资助人名单，如果是新捐赠者才添加到数组
+        uint256 previousAmount = addressToAmountFunded[msg.sender];
         addressToAmountFunded[msg.sender] += msg.value;
 
-        //资助人名单，如果是新捐赠者才添加到数组
-        if (addressToAmountFunded[msg.sender] == 0) {
+        if (previousAmount == 0) {
             funders.push(msg.sender);
         }
     }
@@ -51,12 +53,7 @@ contract FundMe {
     //返回 Chainlink 价格源的版本号
     //用于测试和验证价格源连接
     function getVersion() public view returns (uint256) {
-        // ETH/USD price feed address of Sepolia Network.
-        // chainlink官方文档：https://docs.chain.link/data-feeds/price-feeds/addresses
-        AggregatorV3Interface priceFeed = AggregatorV3Interface(
-            0x694AA1769357215DE4FAC081bf1f309aDC325306
-        );
-        return priceFeed.version();
+        return s_priceFeed.version();
     }
 
     //所有者修饰器：校验当前提取人是否为合约所有者
