@@ -1,62 +1,73 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-//Chainlink 集成：用于获取实时 ETH/USD 价格
+// Chainlink 集成：用于获取实时 ETH/USD 价格
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+// 自定义库: 导入本地的 PriceConverter.sol 库，用于 ETH 到 USD 转换
 import "./PriceConverter.sol";
 
-//自定义异常
+// 定义自定义错误 NotOwner()，当非所有者尝试访问受保护函数时使用，比 require 更节省 gas
 error NotOwner();
 
+//定义事件
+event FallbackCalled(address sender,uint256 value);
+event ReceiveCalled(address sender,uint256 value);
+
+// 声明 FundMe 合约
 contract FundMe {
-    //使用library
+    // 库扩展: 将 PriceConverter 库的功能扩展到 uint256 类型，允许 uint256 值直接调用库函数
     using PriceConverter for uint256;
 
-    //类似java HashMap
+    // 映射: 存储每个地址及其资助金额的映射关系，public 会自动生成 getter 函数
     mapping(address => uint256) public addressToAmountFunded;
 
-    //转账人数组
+    // 动态数组: 存储所有资助者的地址列表，public 自动生成 getter 函数
     address[] public funders;
 
-    //合约所有者
+    // 不可变地址: 存储合约所有者地址，一旦设置就不能更改，public 自动生成 getter
     address public immutable i_owner;
 
-    //可转账的最小USD ？
+    // 常量: 设置最小资助金额为 50 美元，使用 18 位小数精度（wei 级别）
     uint256 public constant MINIMUM_USD = 50 * 10 ** 18;
 
+    // 价格预言机接口: 存储 Chainlink 价格预言机接口实例，public 自动生成 getter
     AggregatorV3Interface public s_priceFeed;
 
-    //构造函数：初始化i_owner为合约部署的用户
+    // 构造函数: 合约部署时执行一次
+    // 设置所有者: 将部署合约的地址设为所有者
+    // 设置价格预言机: 初始化 Chainlink 价格预言机接口
     constructor(address priceFeedAddress) {
         i_owner = msg.sender;
         s_priceFeed = AggregatorV3Interface(priceFeedAddress);
     }
 
-    //资助
+    // 公共可支付函数: 任何人都可以调用并发送 ETH
     function fund() public payable {
-        //校验最小转账金额
+        // 条件检查: 验证发送的 ETH 价值是否达到最低美元要求
+        // 调用库函数: 使用扩展库函数计算 ETH 对应的美元价值
         require(
             msg.value.getConversionRate(s_priceFeed) >= MINIMUM_USD,
             "You need to spend more ETH!"
         );
 
-        //资助人--累计转账金额
-        //资助人名单，如果是新捐赠者才添加到数组
+        // 记录金额: 保存发送者之前的资助金额，然后累加新的资助金额
         uint256 previousAmount = addressToAmountFunded[msg.sender];
         addressToAmountFunded[msg.sender] += msg.value;
 
+        // 首次资助检查: 如果是第一次资助，将其添加到资助者数组中
         if (previousAmount == 0) {
             funders.push(msg.sender);
         }
     }
 
-    //返回 Chainlink 价格源的版本号
-    //用于测试和验证价格源连接
+    // 视图函数: 不修改状态，返回价格预言机的版本号
     function getVersion() public view returns (uint256) {
         return s_priceFeed.version();
     }
 
-    //所有者修饰器：校验当前提取人是否为合约所有者
+    // 所有者修饰符: 限制只有合约所有者才能调用被修饰的函数
+    // 错误处理: 使用自定义错误而不是 require
+    // 占位符: _ 表示被修饰函数的主体
     modifier onlyOwner() {
         // require(msg.sender == owner);
         if (msg.sender != i_owner) revert NotOwner();
@@ -66,7 +77,7 @@ contract FundMe {
 
     //提取
     function withdraw() public onlyOwner {
-        //for循环：转账人累计金额置为0
+        // 清零循环: 遍历所有资助者，将其资助金额重置为 0
         for (
             uint256 funderIndex = 0;
             funderIndex < funders.length;
@@ -75,7 +86,7 @@ contract FundMe {
             address funder = funders[funderIndex];
             addressToAmountFunded[funder] = 0;
         }
-        //转账人数组重置
+        // 数组重置: 创建一个新的空数组替换原数组，清空所有资助者
         funders = new address[](0);
 
         //三种转账方式 from：？  to：？
@@ -86,7 +97,8 @@ contract FundMe {
         // bool sendSuccess = payable(msg.sender).send(address(this).balance);
         // require(sendSuccess, "Send failed");
 
-        // call 提取资金
+        // 资金转移: 使用 call 方法将合约所有余额转给所有者
+        // 安全检查: 验证转账是否成功
         (bool callSuccess, ) = payable(msg.sender).call{
             value: address(this).balance
         }("");
@@ -106,18 +118,19 @@ contract FundMe {
     //receive()  fallback()
 
     // 触发条件：
-    // 纯 ETH 转账（无 msg.data）
-    // 直接向合约地址发送 ETH
     fallback() external payable {
+        emit FallbackCalled(msg.sender,msg.value);
         fund();
     }
 
     // 触发条件：
-    // 调用不存在的函数
-    // ETH 转账带有 msg.data
-    // 任何不匹配的函数调用
     receive() external payable {
+        emit ReceiveCalled(msg.sender,msg.value);
         fund();
+    }
+    // 在合约末尾添加以下函数，用于测试
+    function getFundersLength() public view returns (uint256) {
+        return funders.length;
     }
 }
 
